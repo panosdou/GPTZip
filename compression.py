@@ -8,9 +8,11 @@ def calculate_compression_ratio(data):
     compress = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -15)
     compressed_data = compress.compress(data_bytes)
     compressed_data += compress.flush()
-
-    # compressed_data = zlib.compress(data_bytes, level = 6)
-    #print(data_bytes)
+    #print(compressed_data)
+    #print(len(compressed_data))
+    #print(type(data_bytes))
+    #compressed_data = zlib.compress(data_bytes, level = 6)
+    #print(len(data_bytes))
 
     compression_ratio = len(data_bytes) / len(compressed_data)
 
@@ -22,6 +24,7 @@ def calculate_compression_ratio(data):
 
 with open('text.txt', 'r') as file:
     data = file.read()
+    file.close()
 
 compression_ratio = calculate_compression_ratio(data)
 
