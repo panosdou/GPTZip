@@ -11,7 +11,7 @@ def calculate_compression_ratio(data):
     print(len(compressed_data))
     #print(compressed_data)
     print(len(data_bytes))
-    file = open('compressed.bin', 'wb')
+    file = open('Zlib/compressed.bin', 'wb')
     file.write(compressed_data)
     file.close()
 
@@ -19,13 +19,11 @@ def calculate_compression_ratio(data):
 
     return compression_ratio
 
-with open('text.txt', 'r') as file:
+with open('Zlib/text.txt', 'r') as file:
     data = file.read()
     file.close()
 
 compression_ratio = calculate_compression_ratio(data)
-
-
 
 print(compression_ratio)
 
