@@ -8,14 +8,14 @@ def calculate_compression_ratio(data):
     # compressed_data += compress.flush()
 
     compressed_data = zlib.compress(data_bytes, level = 6)
-    print(len(compressed_data))
+    #print(len(compressed_data))
     #print(compressed_data)
-    print(len(data_bytes))
+    #print(len(data_bytes))
     file = open('Zlib/compressed.bin', 'wb')
     file.write(compressed_data)
     file.close()
 
-    compression_ratio =   len(data_bytes) / len(compressed_data)  
+    compression_ratio =   len(compressed_data) * 8  / len(data_bytes) 
 
     return compression_ratio
 
