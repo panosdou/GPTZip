@@ -1,58 +1,79 @@
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from datasets import load_dataset, DatasetDict
+from transformers import AutoTokenizer, AutoModelForCausalLM,  DataCollatorWithPadding, TrainingArguments, Trainer
+import numpy as np
+import evaluate
 import torch
+import accelerate
 
-class LMHeadModel:
+if torch.cuda.is_available():
+    dev = "cuda:0"
+    print("Device Active")
+else:
+    dev = "cpu"
+    print("Device Inactive")
 
-    def __init__(self, model_name):
-        # Initialize the model and the tokenizer.
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+device = torch.device(dev)
+tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
+model = AutoModelForCausalLM.from_pretrained("distilgpt2").to(device)
+bloom = (load_dataset("sil-ai/bloom-lm", 'eng'[:100]))
 
-    def get_predictions(self, sentence):
-        # Encode the sentence using the tokenizer and return the model predictions.
-        inputs = self.tokenizer.encode(sentence, return_tensors="pt")
-        with torch.no_grad():
-            outputs = self.model(inputs)
-            predictions = outputs[0]
-        return predictions
+block_size = 128
 
-    def get_next_word_probabilities(self, sentence, top_k=500):
+def preprocess_data(data):
+    return tokenizer([" ".join(x) for x in data["text"]])
 
-        # Get the model predictions for the sentence.
-        predictions = self.get_predictions(sentence)
+def group_tokenized_data(tokenized_data):
 
-        # Get the next token candidates.
-        next_token_candidates_tensor = predictions[0, -1, :]
+    concatenated_data = {k: sum(tokenized_data[k], []) for k in tokenized_data.keys()}
+    total_length = len(concatenated_data[list(tokenized_data.keys())[0]])
+    if total_length >= block_size:
+        total_length = (total_length // block_size) * block_size
+    result = {
+        k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
+        for k, t in concatenated_data.items()
+    }
+    result["labels"] = result["input_ids"].copy()
+    return result
 
-        # Get the top k next token candidates.
-        topk_candidates_indexes = torch.topk(
-            next_token_candidates_tensor, top_k).indices.tolist()
+tokenized_bloom = bloom.map(
+    preprocess_data,
+    batched=True,
+    num_proc=1,
+    remove_columns=bloom["train"].column_names,
+)
 
-        # Get the token probabilities for all candidates.
-        all_candidates_probabilities = torch.nn.functional.softmax(
-            next_token_candidates_tensor, dim=-1)
+lm_data = tokenized_bloom.map(group_tokenized_data, batched=True, num_proc=1) #this should be a rectanfular tensor which will be fed directly tou our Language Model
+#print(tokenizer.convert_ids_to_tokens(tokenized_bloom['train'][0]['input_ids']))
 
-        # Filter the token probabilities for the top k candidates.
-        topk_candidates_probabilities = \
-            all_candidates_probabilities[topk_candidates_indexes].tolist()
+tokenizer.pad_token = tokenizer.eos_token
+data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
-        # Decode the top k candidates back to words.
-        topk_candidates_tokens = \
-            [self.tokenizer.decode([idx]).strip() for idx in topk_candidates_indexes]
-
-        # Return the top k candidates and their probabilities.
-        return list(zip(topk_candidates_tokens, topk_candidates_probabilities))
+def compute_metrics(eval_preds):
+    metric = evaluate.load("glue", "mrpc")
+    logits, labels = eval_preds
+    predictions = np.argmax(logits, axis=-1)
+    return metric.compute(predictions=predictions, references=labels)
 
 
-sentence = "I enjoy walking in the"
-model = LMHeadModel("gpt2")
-print(model.get_next_word_probabilities(sentence, top_k=500))
+training_args = TrainingArguments(
+    output_dir="DistilGPTZip/Models/English/",
+    evaluation_strategy="epoch",
+    learning_rate=2e-5,
+    weight_decay=0.015,
+    push_to_hub=True,
+)
 
-# [('park', 0.15904344618320465),
-# ('woods', 0.10028065741062164),
-# ('streets', 0.0418376550078392),
-# ('dark', 0.03117542900145054),
-# ('door', 0.029618268832564354),
-# ('street', 0.02388935722410679),
-# ('rain', 0.021733922883868217),
-# ...
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=lm_data["train"],
+    eval_dataset=lm_data["validation"],
+    data_collator=data_collator,
+    tokenizer=tokenizer,
+    compute_metrics=compute_metrics,  
+)
+
+print("Beginning training...")
+trainer.train()
+
+model.save_pretrained("DistilGPTZip/Models/English/")
