@@ -6,7 +6,7 @@ import torch
 import accelerate
 
 if torch.cuda.is_available():
-    dev = "cuda:0"
+    dev = "cuda:2"
     print("Device Active")
 else:
     dev = "cpu"
@@ -15,7 +15,7 @@ else:
 device = torch.device(dev)
 tokenizer = AutoTokenizer.from_pretrained("distilgpt2")
 model = AutoModelForCausalLM.from_pretrained("distilgpt2").to(device)
-bloom = (load_dataset("sil-ai/bloom-lm", 'eng'[:100]))
+bloom = (load_dataset("sil-ai/bloom-lm", 'eng'))
 
 block_size = 128
 
@@ -38,11 +38,11 @@ def group_tokenized_data(tokenized_data):
 tokenized_bloom = bloom.map(
     preprocess_data,
     batched=True,
-    num_proc=1,
+    num_proc=4,
     remove_columns=bloom["train"].column_names,
 )
 
-lm_data = tokenized_bloom.map(group_tokenized_data, batched=True, num_proc=1) #this should be a rectanfular tensor which will be fed directly tou our Language Model
+lm_data = tokenized_bloom.map(group_tokenized_data, batched=True, num_proc=4) #this should be a rectanfular tensor which will be fed directly tou our Language Model
 #print(tokenizer.convert_ids_to_tokens(tokenized_bloom['train'][0]['input_ids']))
 
 tokenizer.pad_token = tokenizer.eos_token
