@@ -1,16 +1,15 @@
 import sys
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] =  "7"
-
+import csv
 import torch
-
 import constriction
 import numpy as np
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
-def save_to_csv(language, total_chars, token_length, char_token_ratio, entropy, compression_ratio, redundancy):
+def save_to_csv(model, language, total_chars, token_length, char_token_ratio, entropy, compression_ratio, redundancy):
         csv_path = f'{model}_data_AC.csv'
         file_exists = os.path.isfile(csv_path)
         with open(csv_path, mode='a', newline='') as file:
@@ -21,7 +20,7 @@ def save_to_csv(language, total_chars, token_length, char_token_ratio, entropy, 
 
             writer.writerow([language, total_chars, token_length, char_token_ratio, entropy, compression_ratio, redundancy])
 
-def AC_compress_file(model, tokenizer, in_filename, out_filename, max_tokens=None):
+def AC_compress_file(model, model_name, tokenizer, in_filename, out_filename, max_tokens=None):
     language = os.path.splitext(os.path.basename(in_filename))[0]
     with open(in_filename, 'r', encoding='utf-8') as file:
         text = file.read()
@@ -31,10 +30,9 @@ def AC_compress_file(model, tokenizer, in_filename, out_filename, max_tokens=Non
     else:
         tokens = tokenizer.encode(text)
         
-    num_characters = len(tokenizer.decode(tokens, skip_special_tokens = True)) 
+    num_characters = len(tokenizer.batch_decode(tokens, skip_special_tokens = True)) 
     num_tokens = len(tokens)
     ratio =  num_characters/num_tokens  
-    tokens = tokens.reshape(-1, 1024)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -42,7 +40,7 @@ def AC_compress_file(model, tokenizer, in_filename, out_filename, max_tokens=Non
     encoder = constriction.stream.queue.RangeEncoder()
     #print(tokens)
     # print(len(tokens))
-    input_ids = torch.tensor([tokenizer.bos_token_id]*tokens.shape[0], dtype=torch.int64, device = "cuda:0").unsqueeze(0)
+    input_ids = torch.tensor([tokenizer.bos_token_id], dtype=torch.int64, device = "cuda:0").unsqueeze(0)
     print("Shape is: " , input_ids.shape)
     for i in tqdm(range(len(tokens))):
             
@@ -80,7 +78,7 @@ def AC_compress_file(model, tokenizer, in_filename, out_filename, max_tokens=Non
         
     compression_ratio = 8*os.path.getsize(out_filename)/num_characters
     
-    save_to_csv(language,num_characters,num_tokens,ratio,entropy,compression_ratio, redundacy)
+    save_to_csv(model_name, language,num_characters,num_tokens,ratio,entropy,compression_ratio, redundacy)
     
     print(f'Compressed data written to "{out_filename}".')
 
